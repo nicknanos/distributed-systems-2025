@@ -1,0 +1,25 @@
+
+{
+  "storeName": "Pizza Fun",
+  "latitude": 37.99,
+  "longitude": 23.73,
+  "foodCategory": "pizzeria",
+  "stars": 4,
+  "noOfVotes": 42,
+  "priceCategory": "$",
+  "storeLogo": "/usr/bin/pizza.png",
+  "products": [
+    {
+      "productName": "Margarita",
+      "productType": "pizza",
+      "availableAmount": 100,
+      "price": 5.0
+    },
+    {
+      "productName": "Coca-Cola",
+      "productType": "drink",
+      "availableAmount": 50,
+      "price": 1.5
+    }
+  ]
+}
