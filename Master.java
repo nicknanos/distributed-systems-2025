@@ -20,6 +20,23 @@ public class Master {
         listenForReducer();
     }
 
+    private static void sendToClient(Chunk result) {
+        int segmentId = result.getSegmentID();
+        Socket userSocket = userSockets.get(segmentId);
+        if (userSocket != null) {
+            try {
+                ObjectOutputStream out = new ObjectOutputStream(userSocket.getOutputStream());
+                out.writeObject(result);
+                out.flush();
+                userSocket.close();
+                userSockets.remove(segmentId);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+
     private static void init() {
         try {
             Properties prop = new Properties();
@@ -79,6 +96,8 @@ public class Master {
         }).start();
     }
 
+    private static List<Store> allStores = new ArrayList<>();
+
     private static void handleUser(Socket clientSocket) {
         try {
             ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream());
@@ -92,18 +111,85 @@ public class Master {
             userSockets.put(segmentId, clientSocket);
 
             switch (chunk.getTypeID()) {
+                case 1 -> { // INSERT STORE
+                    Store store = (Store) chunk.getData();
+                    allStores.add(store);
+                    System.out.println("✅ Store inserted: " + store.getStoreName());
+
+                    // Ανάθεση σε Worker
+                    int index = Math.abs(store.getStoreName().hashCode()) % numberOfWorkers;
+                    workerOutputs.get(index).writeObject(chunk);
+                    workerOutputs.get(index).flush();
+                }
+
                 case 2 -> { // SEARCH
                     for (ObjectOutputStream out : workerOutputs) {
                         out.writeObject(chunk);
                         out.flush();
                     }
                 }
+
                 case 3 -> { // BUY
                     BuyRequest req = (BuyRequest) chunk.getData();
                     int workerIndex = Math.abs(req.getStoreName().hashCode()) % numberOfWorkers;
                     workerOutputs.get(workerIndex).writeObject(chunk);
                     workerOutputs.get(workerIndex).flush();
                 }
+
+                case 4 -> { // UPDATE PRODUCT AVAILABILITY
+                    Map<String, Object> data = (Map<String, Object>) chunk.getData();
+                    String storeName = (String) data.get("storeName");
+                    String productName = (String) data.get("productName");
+                    int newAmount = (int) data.get("newAmount");
+
+                    for (Store s : allStores) {
+                        if (s.getStoreName().equalsIgnoreCase(storeName)) {
+                            for (Product p : s.getProducts()) {
+                                if (p.getProductName().equalsIgnoreCase(productName)) {
+                                    p.setAvailableAmount(newAmount);
+                                    System.out.println("✅ Updated " + productName + " in " + storeName);
+                                }
+                            }
+                        }
+                    }
+
+                    // Optionally notify Manager
+                    Chunk response = new Chunk("admin", 4, "✔ Updated product availability.");
+                    response.setSegmentID(segmentId);
+                    sendToClient(response);
+                }
+
+                case 5 -> { // SEARCH STORE BY NAME
+                    String name = (String) chunk.getData();
+                    List<Store> found = new ArrayList<>();
+
+                    for (Store s : allStores) {
+                        if (s.getStoreName().equalsIgnoreCase(name)) {
+                            found.add(s);
+                        }
+                    }
+
+                    Chunk response = new Chunk("admin", 5, found);
+                    response.setSegmentID(segmentId);
+                    sendToClient(response);
+                }
+
+                case 6 -> { // STATISTICS
+                    int totalStores = allStores.size();
+                    int totalProducts = allStores.stream().mapToInt(s -> s.getProducts().size()).sum();
+                    double avgStars = allStores.stream().mapToInt(Store::getStars).average().orElse(0);
+
+                    Map<String, Object> stats = new HashMap<>();
+                    stats.put("Total Stores", totalStores);
+                    stats.put("Total Products", totalProducts);
+                    stats.put("Average Stars", avgStars);
+
+                    Chunk response = new Chunk("admin", 6, stats);
+                    response.setSegmentID(segmentId);
+                    sendToClient(response);
+                }
+
+                default -> System.out.println("❌ Unknown request type: " + chunk.getTypeID());
             }
 
         } catch (IOException | ClassNotFoundException e) {
@@ -128,3 +214,5 @@ public class Master {
         }
     }
 }
+
+
