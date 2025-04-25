@@ -1,39 +1,54 @@
-import java.util.*;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+
 public class StoreParser {
 
-    public static Store fromJson(String json) {
-        JSONObject obj = new JSONObject(json);
+    public static Store parseStoreFromJson(String folderPath) throws Exception {
+        File jsonFile = new File(folderPath, "store.json");
+        FileInputStream fis = new FileInputStream(jsonFile);
+        byte[] data = fis.readAllBytes();
+        fis.close();
+        String json = new String(data, StandardCharsets.UTF_8);
 
+        JSONObject obj = new JSONObject(json);
         Store store = new Store();
 
-        store.setStoreName(obj.getString("storeName"));
-        store.setLatitude(obj.getDouble("latitude"));
-        store.setLongitude(obj.getDouble("longitude"));
-        store.setFoodCategory(obj.getString("foodCategory"));
-        store.setStars(obj.getInt("stars"));
-        store.setNoOfVotes(obj.getInt("noOfVotes"));
-       // store.setPriceCategory(obj.getString("priceCategory"));
-        store.setStoreLogo(obj.getString("storeLogo"));
+        store.setStoreName(obj.getString("StoreName"));
+        store.setLatitude(obj.getDouble("Latitude"));
+        store.setLongitude(obj.getDouble("Longitude"));
+        store.setFoodCategory(obj.getString("FoodCategory"));
+        store.setStars(obj.getInt("Stars"));
+        store.setNoOfVotes(obj.getInt("NoOfVotes"));
+        store.setStoreLogo(obj.getString("StoreLogo"));
 
-        JSONArray productArray = obj.getJSONArray("products");
+        JSONArray productsJson = obj.getJSONArray("Products");
         List<Product> products = new ArrayList<>();
+        double sum = 0;
 
-        for (int i = 0; i < productArray.length(); i++) {
-            JSONObject p = productArray.getJSONObject(i);
-            Product prod = new Product();
-
-            prod.setProductName(p.getString("productName"));
-            prod.setProductType(p.getString("productType"));
-            prod.setAvailableAmount(p.getInt("availableAmount"));
-            prod.setPrice(p.getDouble("price"));
-
-            products.add(prod);
+        for (int i = 0; i < productsJson.length(); i++) {
+            JSONObject p = productsJson.getJSONObject(i);
+            Product product = new Product();
+            product.setProductName(p.getString("ProductName"));
+            product.setProductType(p.getString("ProductType"));
+            product.setAvailableAmount(p.getInt("Available Amount"));
+            product.setPrice(p.getDouble("Price"));
+            sum += product.getPrice();
+            products.add(product);
         }
 
         store.setProducts(products);
+
+        double avg = sum / products.size();
+        if (avg <= 5) store.setPriceCategory("$");
+        else if (avg <= 15) store.setPriceCategory("$$");
+        else store.setPriceCategory("$$$");
+
         return store;
     }
 }

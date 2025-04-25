@@ -7,64 +7,27 @@ public class Master {
     private static int reducerPort;
     private static int numberOfWorkers;
 
-    private static List<ObjectOutputStream> workerOutputs = new ArrayList<>();
     private static Map<Integer, Socket> userSockets = new HashMap<>();
-    private static Map<Integer, Integer> responsesReceived = new HashMap<>();
-    private static Map<Integer, List<Store>> partialResults = new HashMap<>();
     private static int segmentIdCounter = 0;
+
+    private static List<Store> allStores = new ArrayList<>();
+    private static Map<String, Integer> salesByProduct = new HashMap<>();
+    private static Map<String, Integer> salesByStoreType = new HashMap<>();
+    private static Map<String, Integer> salesByProductCategory = new HashMap<>();
 
     public static void main(String[] args) {
         init();
-        connectToWorkers();
         listenForUsers();
-        listenForReducer();
     }
-
-    private static void sendToClient(Chunk result) {
-        int segmentId = result.getSegmentID();
-        Socket userSocket = userSockets.get(segmentId);
-        if (userSocket != null) {
-            try {
-                ObjectOutputStream out = new ObjectOutputStream(userSocket.getOutputStream());
-                out.writeObject(result);
-                out.flush();
-                userSocket.close();
-                userSockets.remove(segmentId);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
 
     private static void init() {
         try {
             Properties prop = new Properties();
             prop.load(new FileInputStream("master.config"));
-
             numberOfWorkers = Integer.parseInt(prop.getProperty("numberOfWorkers"));
             userPort = Integer.parseInt(prop.getProperty("userPort"));
             reducerPort = Integer.parseInt(prop.getProperty("reducerPort"));
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private static void connectToWorkers() {
-        try {
-            Properties prop = new Properties();
-            prop.load(new FileInputStream("master.config"));
-
-            for (int i = 1; i <= numberOfWorkers; i++) {
-                String host = prop.getProperty("host" + i);
-                int port = Integer.parseInt(prop.getProperty("worker" + i + "Port"));
-                Socket workerSocket = new Socket(host, port);
-                ObjectOutputStream out = new ObjectOutputStream(workerSocket.getOutputStream());
-                workerOutputs.add(out);
-                System.out.println("Connected to Worker " + i);
-            }
-
+            System.out.println("🚀 Master initialized.");
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -73,6 +36,7 @@ public class Master {
     private static void listenForUsers() {
         new Thread(() -> {
             try (ServerSocket serverSocket = new ServerSocket(userPort)) {
+                System.out.println("📡 Master listening on port " + userPort);
                 while (true) {
                     Socket clientSocket = serverSocket.accept();
                     new Thread(() -> handleUser(clientSocket)).start();
@@ -83,136 +47,100 @@ public class Master {
         }).start();
     }
 
-    private static void listenForReducer() {
-        new Thread(() -> {
-            try (ServerSocket serverSocket = new ServerSocket(reducerPort)) {
-                while (true) {
-                    Socket reducerSocket = serverSocket.accept();
-                    new Thread(() -> handleReducerResponse(reducerSocket)).start();
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }).start();
-    }
+    private static void handleUser(Socket socket) {
+        try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
+             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
 
-    private static List<Store> allStores = new ArrayList<>();
-
-    private static void handleUser(Socket clientSocket) {
-        try {
-            ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream());
             Chunk chunk = (Chunk) in.readObject();
-
             int segmentId;
             synchronized (Master.class) {
                 segmentId = ++segmentIdCounter;
             }
             chunk.setSegmentID(segmentId);
-            userSockets.put(segmentId, clientSocket);
+            userSockets.put(segmentId, socket);
 
             switch (chunk.getTypeID()) {
-                case 1 -> { // INSERT STORE
+                case 1 -> { // Προσθήκη καταστήματος
                     Store store = (Store) chunk.getData();
                     allStores.add(store);
-                    System.out.println("✅ Store inserted: " + store.getStoreName());
+                    int workerIndex = Math.abs(store.getStoreName().hashCode()) % numberOfWorkers;
+                    sendChunkToWorker(chunk, workerIndex);
 
-                    // Ανάθεση σε Worker
-                    int index = Math.abs(store.getStoreName().hashCode()) % numberOfWorkers;
-                    workerOutputs.get(index).writeObject(chunk);
-                    workerOutputs.get(index).flush();
+                    out.writeObject(new Chunk("master", 1, "✅ Το κατάστημα '" + store.getStoreName() + "' προστέθηκε με επιτυχία."));
                 }
 
-                case 2 -> { // SEARCH
-                    for (ObjectOutputStream out : workerOutputs) {
-                        out.writeObject(chunk);
-                        out.flush();
-                    }
+                case 2 -> { // Ενημέρωση διαθεσιμότητας
+                    Map<String, Object> data = (Map<String, Object>) chunk.getData();
+                    String storeName = (String) data.get("storeName");
+                    int workerIndex = Math.abs(storeName.hashCode()) % numberOfWorkers;
+
+                    sendChunkToWorker(chunk, workerIndex);
+                    out.writeObject(new Chunk("master", 2, "🔁 Το απόθεμα του προϊόντος ενημερώθηκε (στάλθηκε στον Worker)."));
                 }
 
-                case 3 -> { // BUY
-                    BuyRequest req = (BuyRequest) chunk.getData();
-                    int workerIndex = Math.abs(req.getStoreName().hashCode()) % numberOfWorkers;
-                    workerOutputs.get(workerIndex).writeObject(chunk);
-                    workerOutputs.get(workerIndex).flush();
+                case 3 -> { // Προσθήκη νέου προϊόντος
+                    Map<String, Object> data = (Map<String, Object>) chunk.getData();
+                    String storeName = (String) data.get("storeName");
+                    Product product = (Product) data.get("product");
+
+                    int workerIndex = Math.abs(storeName.hashCode()) % numberOfWorkers;
+                    sendChunkToWorker(chunk, workerIndex);
+
+                    out.writeObject(new Chunk("master", 3, "✅ Προϊόν προστέθηκε."));
                 }
 
-                case 4 -> { // UPDATE PRODUCT AVAILABILITY
+                case 4 -> { // Αφαίρεση προϊόντος
                     Map<String, Object> data = (Map<String, Object>) chunk.getData();
                     String storeName = (String) data.get("storeName");
                     String productName = (String) data.get("productName");
-                    int newAmount = (int) data.get("newAmount");
 
-                    for (Store s : allStores) {
-                        if (s.getStoreName().equalsIgnoreCase(storeName)) {
-                            for (Product p : s.getProducts()) {
-                                if (p.getProductName().equalsIgnoreCase(productName)) {
-                                    p.setAvailableAmount(newAmount);
-                                    System.out.println("✅ Updated " + productName + " in " + storeName);
-                                }
-                            }
-                        }
-                    }
+                    int workerIndex = Math.abs(storeName.hashCode()) % numberOfWorkers;
+                    sendChunkToWorker(chunk, workerIndex);
 
-                    // Optionally notify Manager
-                    Chunk response = new Chunk("admin", 4, "✔ Updated product availability.");
-                    response.setSegmentID(segmentId);
-                    sendToClient(response);
+                    out.writeObject(new Chunk("master", 4, "🗑 Προϊόν αφαιρέθηκε."));
                 }
 
-                case 5 -> { // SEARCH STORE BY NAME
-                    String name = (String) chunk.getData();
-                    List<Store> found = new ArrayList<>();
-
-                    for (Store s : allStores) {
-                        if (s.getStoreName().equalsIgnoreCase(name)) {
-                            found.add(s);
-                        }
-                    }
-
-                    Chunk response = new Chunk("admin", 5, found);
-                    response.setSegmentID(segmentId);
-                    sendToClient(response);
+                case 5 -> { // Πωλήσεις ανά προϊόν
+                    out.writeObject(new Chunk("master", 5, salesByProduct));
                 }
 
-                case 6 -> { // STATISTICS
-                    int totalStores = allStores.size();
-                    int totalProducts = allStores.stream().mapToInt(s -> s.getProducts().size()).sum();
-                    double avgStars = allStores.stream().mapToInt(Store::getStars).average().orElse(0);
-
-                    Map<String, Object> stats = new HashMap<>();
-                    stats.put("Total Stores", totalStores);
-                    stats.put("Total Products", totalProducts);
-                    stats.put("Average Stars", avgStars);
-
-                    Chunk response = new Chunk("admin", 6, stats);
-                    response.setSegmentID(segmentId);
-                    sendToClient(response);
+                case 6 -> { // Πωλήσεις ανά τύπο καταστήματος
+                    out.writeObject(new Chunk("master", 6, salesByStoreType));
                 }
 
-                default -> System.out.println("❌ Unknown request type: " + chunk.getTypeID());
+                case 7 -> { // Πωλήσεις ανά κατηγορία προϊόντος
+                    out.writeObject(new Chunk("master", 7, salesByProductCategory));
+                }
+
+                default -> {
+                    out.writeObject(new Chunk("master", -1, "❌ Μη υποστηριζόμενη εντολή."));
+                }
             }
 
-        } catch (IOException | ClassNotFoundException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    private static void handleReducerResponse(Socket reducerSocket) {
-        try (ObjectInputStream in = new ObjectInputStream(reducerSocket.getInputStream())) {
-            Chunk response = (Chunk) in.readObject();
-            int segmentId = response.getSegmentID();
-            Socket userSocket = userSockets.get(segmentId);
-            if (userSocket != null) {
-                ObjectOutputStream out = new ObjectOutputStream(userSocket.getOutputStream());
-                out.writeObject(response);
+    private static void sendChunkToWorker(Chunk chunk, int workerIndex) {
+        try {
+            Properties prop = new Properties();
+            prop.load(new FileInputStream("master.config"));
+
+            String host = prop.getProperty("host" + (workerIndex + 1));
+            int port = Integer.parseInt(prop.getProperty("worker" + (workerIndex + 1) + "Port"));
+
+            try (Socket workerSocket = new Socket(host, port);
+                 ObjectOutputStream out = new ObjectOutputStream(workerSocket.getOutputStream())) {
+
+                out.writeObject(chunk);
                 out.flush();
-                userSocket.close();
-                userSockets.remove(segmentId);
+                System.out.println("📦 Chunk sent to Worker " + (workerIndex + 1));
+
             }
-        } catch (IOException | ClassNotFoundException e) {
+        } catch (IOException e) {
+            System.err.println("❌ Failed to send chunk to Worker " + (workerIndex + 1));
             e.printStackTrace();
         }
     }
 }
-
-
