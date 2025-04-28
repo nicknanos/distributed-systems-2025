@@ -18,6 +18,7 @@ public class Master {
     public static void main(String[] args) {
         init();
         listenForUsers();
+        listenForWorkerResponses();
     }
 
     private static void init() {
@@ -101,16 +102,98 @@ public class Master {
                 }
 
                 case 5 -> { // Πωλήσεις ανά προϊόν
-                    out.writeObject(new Chunk("master", 5, salesByProduct));
+                    for (int i = 0; i < numberOfWorkers; i++) {
+                        sendChunkToWorker(chunk, i);  // Στέλνει σε κάθε Worker
+                    }
+
+                    Map<String, Integer> finalResult = new HashMap<>();
+
+                    // Πάρε απαντήσεις από όλους τους Workers
+                    for (int i = 0; i < numberOfWorkers; i++) {
+                        try {
+                            Properties prop = new Properties();
+                            prop.load(new FileInputStream("master.config"));
+
+                            String host = prop.getProperty("host" + (i + 1));
+                            int port = Integer.parseInt(prop.getProperty("worker" + (i + 1) + "Port"));
+
+                            try (Socket workerSocket = new Socket(host, port);
+                                 ObjectInputStream in1 = new ObjectInputStream(workerSocket.getInputStream())) {
+
+                                Chunk workerResponse = (Chunk) in1.readObject();
+                                Map<String, Integer> workerSales = (Map<String, Integer>) workerResponse.getData();
+
+                                // Μαζεύουμε τα αποτελέσματα
+                                for (Map.Entry<String, Integer> entry : workerSales.entrySet()) {
+                                    finalResult.merge(entry.getKey(), entry.getValue(), Integer::sum);
+                                }
+                            }
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+
+                    // Στείλε στον Manager την συνολική λίστα
+                    out.writeObject(new Chunk("master", 5, finalResult));
+                    out.flush();
                 }
 
                 case 6 -> { // Πωλήσεις ανά τύπο καταστήματος
-                    out.writeObject(new Chunk("master", 6, salesByStoreType));
+                    Map<String, Integer> totalSalesByType = new HashMap<>();
+
+                    // Στέλνουμε σε όλους τους Workers ένα Chunk με typeID 6
+                    for (int i = 0; i < numberOfWorkers; i++) {
+                        Chunk requestChunk = new Chunk("admin", 6, null);
+                        sendChunkToWorker(requestChunk, i);
+                    }
+
+                    // Περιμένουμε αποτελέσματα από όλους
+                    for (int i = 0; i < numberOfWorkers; i++) {
+                        Map<String, Integer> partial = (Map<String, Integer>) receiveWorkerResponse();
+                        for (Map.Entry<String, Integer> entry : partial.entrySet()) {
+                            totalSalesByType.merge(entry.getKey(), entry.getValue(), Integer::sum);
+                        }
+                    }
+
+                    out.writeObject(new Chunk("master", 6, totalSalesByType));
+                    out.flush();
                 }
 
                 case 7 -> { // Πωλήσεις ανά κατηγορία προϊόντος
-                    out.writeObject(new Chunk("master", 7, salesByProductCategory));
+                    Map<String, Integer> totalSalesByCategory = new HashMap<>();
+
+                    for (int i = 0; i < numberOfWorkers; i++) {
+                        Chunk requestChunk = new Chunk("admin", 7, null);
+                        sendChunkToWorker(requestChunk, i);
+                    }
+
+                    for (int i = 0; i < numberOfWorkers; i++) {
+                        Map<String, Integer> partial = (Map<String, Integer>) receiveWorkerResponse();
+                        for (Map.Entry<String, Integer> entry : partial.entrySet()) {
+                            totalSalesByCategory.merge(entry.getKey(), entry.getValue(), Integer::sum);
+                        }
+                    }
+
+                    out.writeObject(new Chunk("master", 7, totalSalesByCategory));
+                    out.flush();
                 }
+
+                case 10 -> { // Αναζήτηση καταστημάτων (Search)
+                    int requestId = segmentId;
+                    System.out.println("🔎 Νέα αναζήτηση...");
+
+                    // Αποθηκεύουμε socket για το συγκεκριμένο request
+                    userSockets.put(requestId, socket);
+
+                    // Στέλνουμε το chunk σε ΟΛΟΥΣ τους Workers
+                    for (int i = 0; i < numberOfWorkers; i++) {
+                        sendChunkToWorker(chunk, i);
+                    }
+
+                    // Περιμένουμε αποτελέσματα από Workers -> γίνεται σε άλλο thread (θα το φτιάξουμε παρακάτω)
+                }
+
+
 
                 default -> {
                     out.writeObject(new Chunk("master", -1, "❌ Μη υποστηριζόμενη εντολή."));
@@ -143,4 +226,90 @@ public class Master {
             e.printStackTrace();
         }
     }
+
+    private static Object receiveWorkerResponse() {
+        try (ServerSocket serverSocket = new ServerSocket(0)) { // Χρησιμοποιεί ελεύθερο προσωρινό port
+            int port = serverSocket.getLocalPort();
+            System.out.println("📥 Listening for Worker response on port " + port);
+
+            try (Socket workerSocket = serverSocket.accept();
+                 ObjectInputStream in = new ObjectInputStream(workerSocket.getInputStream())) {
+
+                Chunk chunk = (Chunk) in.readObject();
+                System.out.println("✅ Received data from Worker.");
+                return chunk.getData();
+            }
+        } catch (IOException | ClassNotFoundException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    private static Map<Integer, List<Store>> pendingResults = new HashMap<>();
+    private static Map<Integer, Integer> responsesReceived = new HashMap<>();
+
+    private static void listenForWorkerResponses() {
+        new Thread(() -> {
+            try (ServerSocket serverSocket = new ServerSocket(reducerPort)) {
+                System.out.println("📩 Master listening for Worker responses on port " + reducerPort);
+                while (true) {
+                    Socket workerSocket = serverSocket.accept();
+                    new Thread(() -> handleWorkerResponse(workerSocket)).start();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+
+    private static void handleWorkerResponse(Socket socket) {
+        try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
+            Chunk chunk = (Chunk) in.readObject();
+            int segmentId = chunk.getSegmentID();
+            List<Store> workerStores = (List<Store>) chunk.getData();
+
+            synchronized (Master.class) {
+                pendingResults.putIfAbsent(segmentId, new ArrayList<>());
+                pendingResults.get(segmentId).addAll(workerStores);
+
+                responsesReceived.put(segmentId, responsesReceived.getOrDefault(segmentId, 0) + 1);
+
+                // Όταν έχουμε λάβει αποτελέσματα από ΟΛΟΥΣ τους Workers
+                if (responsesReceived.get(segmentId) == numberOfWorkers) {
+                    sendResultsToUser(segmentId);
+                }
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void sendResultsToUser(int segmentId) {
+        try {
+            Socket userSocket = userSockets.get(segmentId);
+            ObjectOutputStream out = new ObjectOutputStream(userSocket.getOutputStream());
+
+            List<Store> allResults = pendingResults.get(segmentId);
+            Chunk responseChunk = new Chunk("master", 10, allResults);
+            responseChunk.setSegmentID(segmentId);
+
+            out.writeObject(responseChunk);
+            out.flush();
+
+            System.out.println("✅ Αποτελέσματα αναζήτησης στάλθηκαν στον πελάτη.");
+
+            // Καθαρίζουμε τα προσωρινά δεδομένα
+            userSockets.remove(segmentId);
+            pendingResults.remove(segmentId);
+            responsesReceived.remove(segmentId);
+
+            userSocket.close();
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+
 }

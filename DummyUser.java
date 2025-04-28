@@ -4,22 +4,24 @@ import java.util.*;
 
 public class DummyUser {
 
-    private static final Scanner scanner = new Scanner(System.in);
     private static String masterHost;
     private static int masterPort;
-    private static int userId = 1; // fixed ID for simplicity
 
     public static void main(String[] args) {
         loadConfig();
+        Scanner scanner = new Scanner(System.in);
+
         while (true) {
-            printMenu();
-            int choice = Integer.parseInt(scanner.nextLine());
+            System.out.println("\n=== Dummy User Menu ===");
+            System.out.println("1. Αναζήτηση καταστημάτων");
+            System.out.println("2. Έξοδος");
+            System.out.print("Επιλογή: ");
+            String choice = scanner.nextLine();
 
             switch (choice) {
-                case 1 -> handleSearch();
-                case 2 -> handleBuy();
-                case 3 -> System.exit(0);
-                default -> System.out.println("Invalid choice.");
+                case "1" -> search(scanner);
+                case "2" -> System.exit(0);
+                default -> System.out.println("Μη έγκυρη επιλογή.");
             }
         }
     }
@@ -27,7 +29,7 @@ public class DummyUser {
     private static void loadConfig() {
         try {
             Properties prop = new Properties();
-            prop.load(new FileInputStream("user.config")); // config with masterHost, masterPort
+            prop.load(new FileInputStream("user.config"));
             masterHost = prop.getProperty("host");
             masterPort = Integer.parseInt(prop.getProperty("masterPort"));
         } catch (IOException e) {
@@ -35,100 +37,52 @@ public class DummyUser {
         }
     }
 
-    private static void printMenu() {
-        System.out.println("\n--- Dummy User Menu ---");
-        System.out.println("1. Search stores");
-        System.out.println("2. Buy from store");
-        System.out.println("3. Exit");
-        System.out.print("Your choice: ");
-    }
+    private static void search(Scanner scanner) {
+        try (Socket socket = new Socket(masterHost, masterPort);
+             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
+             ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
 
-    private static void handleSearch() {
-        try (Socket socket = new Socket(masterHost, masterPort)) {
-            ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
-            ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
+            // Διαβάζουμε τα φίλτρα από τον χρήστη
+            Map<String, Object> filters = new HashMap<>();
 
-            System.out.println("Enter location (lat lon): ");
-            double lat = scanner.nextDouble();
-            double lon = scanner.nextDouble();
-            scanner.nextLine(); // consume newline
+            System.out.print("📍 Latitude: ");
+            filters.put("latitude", Double.parseDouble(scanner.nextLine()));
 
-            System.out.println("Enter categories (comma-separated) or leave blank: ");
-            List<String> categories = List.of(scanner.nextLine().split(","));
+            System.out.print("📍 Longitude: ");
+            filters.put("longitude", Double.parseDouble(scanner.nextLine()));
 
-            System.out.println("Minimum stars (0-5): ");
-            int minStars = Integer.parseInt(scanner.nextLine());
+            System.out.print("🍽 Food Category (π.χ. pizzeria ή αφήστε κενό): ");
+            String food = scanner.nextLine();
+            if (!food.isEmpty()) filters.put("foodCategory", food);
 
-            System.out.println("Price categories ($,$$,...) comma-separated: ");
-            List<String> prices = List.of(scanner.nextLine().split(","));
+            System.out.print("⭐ Ελάχιστα αστέρια (1-5 ή κενό): ");
+            String stars = scanner.nextLine();
+            if (!stars.isEmpty()) filters.put("stars", Integer.parseInt(stars));
 
-            SearchRequest request = new SearchRequest(lat, lon, categories, minStars, prices);
-            Chunk chunk = new Chunk(String.valueOf(userId), 2, request);
+            System.out.print("💲 Price Category ($/$$/$$$ ή κενό): ");
+            String price = scanner.nextLine();
+            if (!price.isEmpty()) filters.put("priceCategory", price);
 
-            out.writeObject(chunk);
+            // Δημιουργούμε ένα Chunk για αναζήτηση (typeID 10 π.χ.)
+            Chunk searchRequest = new Chunk("dummyuser", 10, filters);
+
+            // Στέλνουμε το αίτημα στο Master
+            out.writeObject(searchRequest);
             out.flush();
+            System.out.println("✅ Search request sent to Master.");
 
+            // Περιμένουμε την απάντηση
             Chunk response = (Chunk) in.readObject();
-            List<Store> results = (List<Store>) response.getData();
+            List<Store> foundStores = (List<Store>) response.getData();
 
-            if (results.isEmpty()) {
-                System.out.println("No stores found.");
+            if (foundStores.isEmpty()) {
+                System.out.println("❌ Δεν βρέθηκαν καταστήματα με αυτά τα φίλτρα.");
             } else {
-                System.out.println("\n--- Matching Stores ---");
-                for (int i = 0; i < results.size(); i++) {
-                    Store s = results.get(i);
-                    System.out.println((i + 1) + ". " + s.getStoreName() + " | Category: " + s.getFoodCategory() + " | Rating: " + s.getStars());
+                System.out.println("\n🔎 Βρέθηκαν καταστήματα:");
+                for (Store s : foundStores) {
+                    System.out.println("🏪 " + s.getStoreName() + " | " + s.getFoodCategory() + " | " + s.getStars() + "⭐ | " + s.getPriceCategory());
                 }
-                storedSearchResults = results;
             }
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private static List<Store> storedSearchResults = new ArrayList<>();
-
-    private static void handleBuy() {
-        if (storedSearchResults.isEmpty()) {
-            System.out.println("Please search first.");
-            return;
-        }
-
-        try (Socket socket = new Socket(masterHost, masterPort)) {
-            ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
-            ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
-
-            System.out.println("Select store by number: ");
-            int storeIndex = Integer.parseInt(scanner.nextLine()) - 1;
-
-            Store selected = storedSearchResults.get(storeIndex);
-            Map<String, Integer> cart = new HashMap<>();
-
-            System.out.println("Available products:");
-            for (Product p : selected.getProducts()) {
-                System.out.println("- " + p.getProductName() + " (" + p.getAvailableAmount() + " available) $" + p.getPrice());
-            }
-
-            while (true) {
-                System.out.print("Enter product name to buy (or 'done'): ");
-                String product = scanner.nextLine();
-                if (product.equalsIgnoreCase("done")) break;
-
-                System.out.print("Quantity: ");
-                int qty = Integer.parseInt(scanner.nextLine());
-                cart.put(product, qty);
-            }
-
-            BuyRequest buyRequest = new BuyRequest(selected.getStoreName(), cart);
-            Chunk chunk = new Chunk(String.valueOf(userId), 3, buyRequest);
-
-            out.writeObject(chunk);
-            out.flush();
-
-            Chunk response = (Chunk) in.readObject();
-            BuyResponse result = (BuyResponse) response.getData();
-            System.out.println(result.isSuccess() ? "✅ " : "❌ " + result.getMessage());
 
         } catch (Exception e) {
             e.printStackTrace();

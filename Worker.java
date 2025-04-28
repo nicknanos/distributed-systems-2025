@@ -49,6 +49,10 @@ public class Worker {
                 case 2 -> handleUpdateAvailability(chunk);
                 case 3 -> handleAddProduct(chunk);
                 case 4 -> handleRemoveProduct(chunk);
+                case 5 -> handleSalesByProduct(chunk, socket);
+                case 6 -> handleSalesByStoreType(socket);
+                case 7 -> handleSalesByProductCategory(socket);
+                case 10 -> handleSearchRequest(chunk);
                 case 100 -> handlePurchase(chunk); // π.χ. αγορά
                 default -> System.out.println("❌ Άγνωστο typeID: " + chunk.getTypeID());
             }
@@ -127,7 +131,166 @@ public class Worker {
         System.out.println("❌ Δεν βρέθηκε κατάστημα για αφαίρεση προϊόντος.");
     }
 
+    private static void handleSalesByProduct(Chunk chunk, Socket socket) {
+        Map<String, Integer> productSales = new HashMap<>();
+
+        synchronized (storeList) {
+            for (Store store : storeList) {
+                for (Product product : store.getProducts()) {
+                    // Αν έχει γίνει κάποια πώληση
+                    if (product.getSoldAmount() > 0) {
+                        productSales.put(product.getProductName(),
+                                productSales.getOrDefault(product.getProductName(), 0) + product.getSoldAmount());
+                    }
+                }
+            }
+        }
+
+        try {
+            ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
+            Chunk response = new Chunk("worker", 5, productSales);
+            response.setSegmentID(chunk.getSegmentID());
+            out.writeObject(response);
+            out.flush();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    private static void handleSalesByStoreType(Socket socket) {
+        try (ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
+            Map<String, Integer> storeTypeSales = new HashMap<>();
+
+            synchronized (storeList) {
+                for (Store store : storeList) {
+                    int storeSales = 0;
+                    for (Product p : store.getProducts()) {
+                        int initialAmount = p.getInitialAmount();
+                        int currentAmount = p.getAvailableAmount();
+                        storeSales += (initialAmount - currentAmount);
+                    }
+
+                    if (storeSales > 0) {
+                        storeTypeSales.merge(store.getFoodCategory(), storeSales, Integer::sum);
+                    }
+                }
+            }
+
+            Chunk response = new Chunk("worker", 6, storeTypeSales);
+            out.writeObject(response);
+            out.flush();
+            System.out.println("📦 Sales per store type sent back to Master!");
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    private static void handleSalesByProductCategory(Socket socket) {
+        try (ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
+            Map<String, Integer> productCategorySales = new HashMap<>();
+
+            synchronized (storeList) {
+                for (Store store : storeList) {
+                    for (Product p : store.getProducts()) {
+                        int initialAmount = p.getInitialAmount();
+                        int currentAmount = p.getAvailableAmount();
+                        int sold = initialAmount - currentAmount;
+
+                        if (sold > 0) {
+                            productCategorySales.merge(p.getProductType(), sold, Integer::sum);
+                        }
+                    }
+                }
+            }
+
+            Chunk response = new Chunk("worker", 7, productCategorySales);
+            out.writeObject(response);
+            out.flush();
+            System.out.println("📦 Sales per product category sent back to Master!");
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void handleSearchRequest(Chunk chunk) {
+        try {
+            Map<String, Object> filters = (Map<String, Object>) chunk.getData();
+            System.out.println(filters);
+            double clientLat = (double) filters.get("latitude");
+            double clientLon = (double) filters.get("longitude");
+            String foodCategory = (String) filters.get("foodCategory");
+            int minStars = (int) filters.get("stars");
+            String priceCategory = (String) filters.get("priceCategory");
+
+            List<Store> results = new ArrayList<>();
+
+            synchronized (storeList) {
+                for (Store store : storeList) {
+                    if (distance(clientLat, clientLon, store.getLatitude(), store.getLongitude()) <= 5) {
+                        if (!foodCategory.isEmpty() && !store.getFoodCategory().equalsIgnoreCase(foodCategory)) {
+                            continue;
+                        }
+                        if (store.getStars() < minStars) {
+                            continue;
+                        }
+                        if (!priceCategory.isEmpty() && !store.getPriceCategory().equals(priceCategory)) {
+                            continue;
+                        }
+                        results.add(store);
+                    }
+                }
+            }
+
+            // Στέλνουμε τα αποτελέσματα πίσω στον Master
+            sendResultsToMaster(chunk.getSegmentID(), results);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+
+
     private static void handlePurchase(Chunk chunk) {
         // Not yet implemented: θα περιλαμβάνει ενημέρωση των αποθεμάτων, πωλήσεων, και συγχρονισμό.
     }
+
+
+
+    private static void sendResultsToMaster(int segmentId, List<Store> results) {
+        try {
+            Properties prop = new Properties();
+            prop.load(new FileInputStream("worker.config"));
+            String masterHost = prop.getProperty("masterHost");
+            int masterPort = Integer.parseInt(prop.getProperty("reducerPort"));
+
+            try (Socket socket = new Socket(masterHost, masterPort);
+                 ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
+
+                Chunk response = new Chunk("worker", 10, results);
+                response.setSegmentID(segmentId);
+
+                out.writeObject(response);
+                out.flush();
+                System.out.println("✅ Στάλθηκαν αποτελέσματα αναζήτησης στον Master (" + results.size() + " καταστήματα).");
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+
+    private static double distance(double lat1, double lon1, double lat2, double lon2) {
+        double theta = lon1 - lon2;
+        double dist = Math.sin(Math.toRadians(lat1)) * Math.sin(Math.toRadians(lat2))
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) * Math.cos(Math.toRadians(theta));
+        dist = Math.acos(dist);
+        dist = Math.toDegrees(dist);
+        dist = dist * 60 * 1.1515 * 1.609344; // miles to km
+        return dist;
+    }
+
 }
+
+
