@@ -19,8 +19,9 @@ public class Worker {
 
     private static void init() {
         try {
+            String configFile = System.getProperty("worker.config", "worker1.config");
             Properties prop = new Properties();
-            prop.load(new FileInputStream("worker.config"));
+            prop.load(new FileInputStream(configFile));
             port = Integer.parseInt(prop.getProperty("serverPort"));
             System.out.println("👷 Worker listening on port " + port);
         } catch (IOException e) {
