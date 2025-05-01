@@ -1,21 +1,25 @@
-
 import java.io.Serializable;
-import java.util.Map;
 
 public class BuyRequest implements Serializable {
     private String storeName;
-    private Map<String, Integer> productQuantities;
+    private String productName;
+    private int quantity;
 
-    public BuyRequest(String storeName, Map<String, Integer> productQuantities) {
+    public BuyRequest(String storeName, String productName, int quantity) {
         this.storeName = storeName;
-        this.productQuantities = productQuantities;
+        this.productName = productName;
+        this.quantity = quantity;
     }
 
     public String getStoreName() {
         return storeName;
     }
 
-    public Map<String, Integer> getProductQuantities() {
-        return productQuantities;
+    public String getProductName() {
+        return productName;
+    }
+
+    public int getQuantity() {
+        return quantity;
     }
 }

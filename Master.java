@@ -8,6 +8,7 @@ public class Master {
     private static int numberOfWorkers;
 
     private static Map<Integer, Socket> userSockets = new HashMap<>();
+    private static Map<Integer, ObjectOutputStream> userOutputs = new HashMap<>();
     private static int segmentIdCounter = 0;
 
     private static List<Store> allStores = new ArrayList<>();
@@ -49,8 +50,9 @@ public class Master {
     }
 
     private static void handleUser(Socket socket) {
-        try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
-             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
+        try {
+            ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
+            ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
 
             Chunk chunk = (Chunk) in.readObject();
             int segmentId;
@@ -58,7 +60,10 @@ public class Master {
                 segmentId = ++segmentIdCounter;
             }
             chunk.setSegmentID(segmentId);
+
+            // Κρατάμε το Socket και το OutputStream!
             userSockets.put(segmentId, socket);
+            userOutputs.put(segmentId, out);
 
             switch (chunk.getTypeID()) {
                 case 1 -> { // Προσθήκη καταστήματος
@@ -178,23 +183,55 @@ public class Master {
                     out.flush();
                 }
 
-                case 10 -> { // Αναζήτηση καταστημάτων (Search)
+                case 10 -> {
                     int requestId = segmentId;
                     System.out.println("🔎 Νέα αναζήτηση...");
 
-                    // Αποθηκεύουμε socket για το συγκεκριμένο request
                     userSockets.put(requestId, socket);
 
-                    // Στέλνουμε το chunk σε ΟΛΟΥΣ τους Workers
                     for (int i = 0; i < numberOfWorkers; i++) {
                         sendChunkToWorker(chunk, i);
                     }
 
-                    // Περιμένουμε αποτελέσματα από Workers -> γίνεται σε άλλο thread (θα το φτιάξουμε παρακάτω)
+                }
+
+                case 11 -> {
+                    BuyRequest req = (BuyRequest) chunk.getData();
+                    int workerIndex = Math.abs(req.getStoreName().hashCode()) % numberOfWorkers;
+                    sendChunkToWorker(chunk, workerIndex);
+
+                    out.writeObject(new Chunk("master", 11, "🛒 Αγορά αιτήθηκε για " + req.getQuantity() + "x " + req.getProductName()));
+                }
+
+                case 12 -> {
+                    Map<String, Object> data = (Map<String, Object>) chunk.getData();
+                    String storeName = (String) data.get("storeName");
+                    int workerIndex = Math.abs(storeName.hashCode()) % numberOfWorkers;
+                    sendChunkToWorker(chunk, workerIndex);
+
+                    out.writeObject(new Chunk("master", 12, "📨 Βαθμολογία."));
                 }
 
 
-
+                case 100 -> {  // purchase
+                    BuyRequest req = (BuyRequest) chunk.getData();
+                    int idx = Math.abs(req.getStoreName().hashCode()) % numberOfWorkers;
+                    // open a socket to that worker
+                    Properties p = new Properties();
+                    p.load(new FileInputStream("master.config"));
+                    String host = p.getProperty("host" + (idx + 1));
+                    int port = Integer.parseInt(p.getProperty("worker" + (idx + 1) + "Port"));
+                    try (Socket ws = new Socket(host, port);
+                         ObjectOutputStream wout = new ObjectOutputStream(ws.getOutputStream());
+                         ObjectInputStream win = new ObjectInputStream(ws.getInputStream())) {
+                        wout.writeObject(chunk);
+                        wout.flush();
+                        Chunk workerResp = (Chunk) win.readObject();
+                        // forward to client
+                        out.writeObject(workerResp);
+                        out.flush();
+                    }
+                }
                 default -> {
                     out.writeObject(new Chunk("master", -1, "❌ Μη υποστηριζόμενη εντολή."));
                 }
@@ -276,7 +313,7 @@ public class Master {
 
                 // Όταν έχουμε λάβει αποτελέσματα από ΟΛΟΥΣ τους Workers
                 if (responsesReceived.get(segmentId) == numberOfWorkers) {
-                    sendResultsToUser(segmentId);
+                    sendResultsToUser(segmentId, workerStores);
                 }
             }
 
@@ -285,31 +322,29 @@ public class Master {
         }
     }
 
-    private static void sendResultsToUser(int segmentId) {
-        try {
-            Socket userSocket = userSockets.get(segmentId);
-            ObjectOutputStream out = new ObjectOutputStream(userSocket.getOutputStream());
+    private static void sendResultsToUser(int segmentId, List<Store> results) {
+        Socket socket = userSockets.get(segmentId);
+        ObjectOutputStream out = userOutputs.get(segmentId);
 
-            List<Store> allResults = pendingResults.get(segmentId);
-            Chunk responseChunk = new Chunk("master", 10, allResults);
-            responseChunk.setSegmentID(segmentId);
+        if (socket != null && out != null) {
+            try {
+                Chunk response = new Chunk("master", 10, results);
+                response.setSegmentID(segmentId);
 
-            out.writeObject(responseChunk);
-            out.flush();
+                out.writeObject(response);
+                out.flush();
 
-            System.out.println("✅ Αποτελέσματα αναζήτησης στάλθηκαν στον πελάτη.");
+                socket.close(); // Μόνο ΤΩΡΑ κλείνουμε το socket.
+                userSockets.remove(segmentId);
+                userOutputs.remove(segmentId);
 
-            // Καθαρίζουμε τα προσωρινά δεδομένα
-            userSockets.remove(segmentId);
-            pendingResults.remove(segmentId);
-            responsesReceived.remove(segmentId);
-
-            userSocket.close();
-
-        } catch (IOException e) {
-            e.printStackTrace();
+                System.out.println("✅ Αποτελέσματα εστάλησαν στον DummyUser.");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
+
 
 
 }

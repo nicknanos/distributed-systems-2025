@@ -18,7 +18,7 @@ public class ActionsForWorkers extends Thread {
     public void run() {
         switch (data.getTypeID()) {
             case 2 -> handleSearch();
-            case 3 -> handleBuy();
+            //case 3 -> handleBuy();
             default -> System.out.println("Invalid request type in Worker.");
         }
     }
@@ -66,7 +66,7 @@ public class ActionsForWorkers extends Thread {
         double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
     }
-
+/*
     private void handleBuy() {
         BuyRequest req = (BuyRequest) data.getData();
         BuyResponse response;
@@ -118,4 +118,5 @@ public class ActionsForWorkers extends Thread {
             e.printStackTrace();
         }
     }
+*/
 }

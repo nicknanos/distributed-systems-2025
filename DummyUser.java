@@ -14,13 +14,17 @@ public class DummyUser {
         while (true) {
             System.out.println("\n=== Dummy User Menu ===");
             System.out.println("1. Αναζήτηση καταστημάτων");
-            System.out.println("2. Έξοδος");
+            System.out.println("2. Αγορά Προϊόντος");
+            System.out.println("3. Βαθμολόγηση καταστήματος");
+            System.out.println("4. Έξοδος");
             System.out.print("Επιλογή: ");
             String choice = scanner.nextLine();
 
             switch (choice) {
                 case "1" -> search(scanner);
-                case "2" -> System.exit(0);
+                case "2" -> buy(scanner);
+                case "3" -> handleRating(scanner);
+                case "4" -> System.exit(0);
                 default -> System.out.println("Μη έγκυρη επιλογή.");
             }
         }
@@ -55,23 +59,20 @@ public class DummyUser {
             String food = scanner.nextLine();
             if (!food.isEmpty()) filters.put("foodCategory", food);
 
-            System.out.print("⭐ Ελάχιστα αστέρια (1-5 ή κενό): ");
+            System.out.print("⭐ Ελάχιστα αστέρια (1-5): ");
             String stars = scanner.nextLine();
             if (!stars.isEmpty()) filters.put("stars", Integer.parseInt(stars));
 
-            System.out.print("💲 Price Category ($/$$/$$$ ή κενό): ");
+            System.out.print("💲 Price Category ($/$$/$$$): ");
             String price = scanner.nextLine();
             if (!price.isEmpty()) filters.put("priceCategory", price);
 
-            // Δημιουργούμε ένα Chunk για αναζήτηση (typeID 10 π.χ.)
             Chunk searchRequest = new Chunk("dummyuser", 10, filters);
 
-            // Στέλνουμε το αίτημα στο Master
             out.writeObject(searchRequest);
             out.flush();
             System.out.println("✅ Search request sent to Master.");
 
-            // Περιμένουμε την απάντηση
             Chunk response = (Chunk) in.readObject();
             List<Store> foundStores = (List<Store>) response.getData();
 
@@ -88,4 +89,63 @@ public class DummyUser {
             e.printStackTrace();
         }
     }
+
+    private static void buy(Scanner in) {
+
+
+        try (Socket socket = new Socket(masterHost, masterPort);
+             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
+             ObjectInputStream input = new ObjectInputStream(socket.getInputStream())) {
+                System.out.print("👉 Διάλεξε κατάστημα: ");
+                String storeName = in.nextLine();
+
+                System.out.print("👉 Προϊόν προς αγορά: ");
+                String productName = in.nextLine();
+
+                System.out.print("👉 Ποσότητα: ");
+                int quantity = Integer.parseInt(in.nextLine());
+
+                BuyRequest buyRequest = new BuyRequest(storeName, productName, quantity);
+                Chunk chunk = new Chunk("user", 11, buyRequest);
+                out.writeObject(chunk);
+                out.flush();
+
+                Chunk response = (Chunk) input.readObject();
+                System.out.println("📦 Αποτέλεσμα αγοράς: " + response.getData());
+
+        } catch (IOException | ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void handleRating(Scanner in) {
+        System.out.print("🏪 Όνομα καταστήματος: ");
+        String storeName = in.nextLine();
+
+        System.out.print("⭐ Αστέρια (1-5): ");
+        int rating = Integer.parseInt(in.nextLine());
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("storeName", storeName);
+        data.put("rating", rating);
+
+        Chunk chunk = new Chunk("user", 12, data);
+
+        try (Socket socket = new Socket(masterHost, masterPort);
+             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
+             ObjectInputStream input = new ObjectInputStream(socket.getInputStream())) {
+
+            out.writeObject(chunk);
+            out.flush();
+
+            Chunk response = (Chunk) input.readObject();
+            System.out.println("✅ Απάντηση: " + response.getData());
+
+        } catch (IOException | ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+    }
+
+
+
 }

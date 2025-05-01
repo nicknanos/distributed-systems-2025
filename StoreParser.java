@@ -48,7 +48,6 @@ public class StoreParser {
         if (avg <= 5) store.setPriceCategory("$");
         else if (avg <= 15) store.setPriceCategory("$$");
         else store.setPriceCategory("$$$");
-
         return store;
     }
 }

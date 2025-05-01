@@ -16,9 +16,6 @@ public class ManagerConsole {
                 System.out.println("2. Ενημέρωση διαθεσιμότητας προϊόντος");
                 System.out.println("3. Προσθήκη νέου προϊόντος");
                 System.out.println("4. Αφαίρεση προϊόντος");
-                System.out.println("5. Συνολικές πωλήσεις ανά προϊόν");
-                System.out.println("6. Συνολικές πωλήσεις ανά τύπο καταστήματος");
-                System.out.println("7. Συνολικές πωλήσεις ανά κατηγορία προϊόντος");
                 System.out.println("8. Έξοδος");
                 System.out.print("Επιλογή: ");
 

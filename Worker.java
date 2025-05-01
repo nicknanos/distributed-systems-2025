@@ -53,7 +53,9 @@ public class Worker {
                 case 6 -> handleSalesByStoreType(socket);
                 case 7 -> handleSalesByProductCategory(socket);
                 case 10 -> handleSearchRequest(chunk);
-                case 100 -> handlePurchase(chunk); // π.χ. αγορά
+                case 11 -> handleBuyRequest(chunk);
+                case 12 -> handleRating(chunk);
+                //case 100 -> handlePurchase(chunk, socket);
                 default -> System.out.println("❌ Άγνωστο typeID: " + chunk.getTypeID());
             }
 
@@ -215,7 +217,6 @@ public class Worker {
     private static void handleSearchRequest(Chunk chunk) {
         try {
             Map<String, Object> filters = (Map<String, Object>) chunk.getData();
-            System.out.println(filters);
             double clientLat = (double) filters.get("latitude");
             double clientLon = (double) filters.get("longitude");
             String foodCategory = (String) filters.get("foodCategory");
@@ -249,10 +250,57 @@ public class Worker {
         }
     }
 
+    private static void handleBuyRequest(Chunk chunk) {
+        BuyRequest req = (BuyRequest) chunk.getData();
+        String storeName = req.getStoreName();
+        String productName = req.getProductName();
+        int quantity = req.getQuantity();
+
+        synchronized (storeList) {
+            for (Store store : storeList) {
+                if (store.getStoreName().equalsIgnoreCase(storeName)) {
+                    for (Product p : store.getProducts()) {
+                        if (p.getProductName().equalsIgnoreCase(productName)) {
+                            synchronized (p) {
+                                int available = p.getAvailableAmount();
+                                if (available >= quantity) {
+                                    p.setAvailableAmount(available - quantity);
+                                    System.out.println("✅ Αγορά: " + quantity + " x " + productName + " από " + storeName);
+                                    return;
+                                } else {
+                                    System.out.println("❌ Μη διαθέσιμο απόθεμα για " + productName + " στο " + storeName);
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        System.out.println("❌ Κατάστημα ή προϊόν δεν βρέθηκαν για αγορά.");
+    }
 
 
-    private static void handlePurchase(Chunk chunk) {
-        // Not yet implemented: θα περιλαμβάνει ενημέρωση των αποθεμάτων, πωλήσεων, και συγχρονισμό.
+    private static void handleRating(Chunk chunk) {
+        Map<String, Object> data = (Map<String, Object>) chunk.getData();
+        String storeName = (String) data.get("storeName");
+        int rating = (int) data.get("rating");
+
+        synchronized (storeList) {
+            for (Store store : storeList) {
+                if (store.getStoreName().equalsIgnoreCase(storeName)) {
+                    int oldStars = store.getStars();
+                    int oldVotes = store.getNoOfVotes();
+                    int newVotes = oldVotes + 1;
+                    int newStars = Math.round(((oldStars * oldVotes) + rating) / (float) newVotes);
+                    store.setStars(newStars);
+                    store.setNoOfVotes(newVotes);
+                    System.out.println("⭐ Νέα βαθμολογία για '" + storeName + "': " + newStars + " (" + newVotes + " ψήφοι)");
+                    return;
+                }
+            }
+        }
     }
 
 
@@ -288,7 +336,9 @@ public class Worker {
         dist = Math.acos(dist);
         dist = Math.toDegrees(dist);
         dist = dist * 60 * 1.1515 * 1.609344; // miles to km
+        System.out.println(dist);
         return dist;
+
     }
 
 }
