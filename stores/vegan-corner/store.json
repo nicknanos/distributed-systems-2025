@@ -1,0 +1,23 @@
+{
+  "StoreName": "Vegan Corner",
+  "Latitude": 37.9850,
+  "Longitude": 23.7400,
+  "FoodCategory": "vegan",
+  "Stars": 4,
+  "NoOfVotes": 89,
+  "StoreLogo": "/usr/bin/images/vegan.png",
+  "Products": [
+    {
+      "ProductName": "Tofu Wrap",
+      "ProductType": "wrap",
+      "Available Amount": 40,
+      "Price": 6.8
+    },
+    {
+      "ProductName": "Quinoa Salad",
+      "ProductType": "salad",
+      "Available Amount": 60,
+      "Price": 5.5
+    }
+  ]
+}

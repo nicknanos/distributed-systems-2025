@@ -1,0 +1,23 @@
+{
+  "StoreName": "Souvlaki House",
+  "Latitude": 37.9801,
+  "Longitude": 23.7287,
+  "FoodCategory": "souvlaki",
+  "Stars": 5,
+  "NoOfVotes": 230,
+  "StoreLogo": "/usr/bin/images/souvlaki.png",
+  "Products": [
+    {
+      "ProductName": "Kalamaki",
+      "ProductType": "meat",
+      "Available Amount": 100,
+      "Price": 2.5
+    },
+    {
+      "ProductName": "Gyros pita",
+      "ProductType": "meat",
+      "Available Amount": 80,
+      "Price": 3.2
+    }
+  ]
+}

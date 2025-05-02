@@ -1,0 +1,23 @@
+{
+  "StoreName": "Pizza Fun",
+  "Latitude": 37.9785,
+  "Longitude": 23.7323,
+  "FoodCategory": "pizzeria",
+  "Stars": 4,
+  "NoOfVotes": 120,
+  "StoreLogo": "/usr/bin/images/pizza.png",
+  "Products": [
+    {
+      "ProductName": "Margarita",
+      "ProductType": "pizza",
+      "Available Amount": 50,
+      "Price": 8.5
+    },
+    {
+      "ProductName": "Pepperoni",
+      "ProductType": "pizza",
+      "Available Amount": 30,
+      "Price": 9.2
+    }
+  ]
+}

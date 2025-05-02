@@ -2,6 +2,10 @@
 import java.io.*;
 import java.net.*;
 import java.util.*;
+
+
+// Εγγραφή που περιέχει πληροφορίες για έναν Worker (διεύθυνση και port)
+record WorkerInfo(String host, int port) {}
 /**
  * Η κλάση Master αποτελεί τον κεντρικό διαχειριστή του κατανεμημένου συστήματος.
  * Αποδέχεται αιτήματα από πελάτες και διαχειριστές μέσω TCP συνδέσεων, τα αναθέτει σε Workers με χρήση hash-based κατανομής
@@ -9,16 +13,17 @@ import java.util.*;
  * Υλοποιεί MapReduce-style ροές για αναζητήσεις, και διαχειρίζεται τις λειτουργίες όπως αγορά προϊόντων, ενημερώσεις καταστημάτων,
  * στατιστικά πωλήσεων και βαθμολόγηση.
  */
-record WorkerInfo(String host, int port) {}
-
 public class Master {
-    private static final boolean DEBUG_MODE = true;
+    private static final boolean DEBUG_MODE = true;     // Ενεργοποίηση/απενεργοποίηση μηνυμάτων debug
 
-    private static List<WorkerInfo> workers = new ArrayList<>();
+    private static List<WorkerInfo> workers = new ArrayList<>();    // Λίστα με όλους τους διαθέσιμους Workers
+
+    // Θύρες επικοινωνίας για τους χρήστες και για τους Workers
     private static int userPort;
     private static int reducerPort;
     private static int numberOfWorkers;
 
+    // Χάρτες για παρακολούθηση socket, streams και απαντήσεων χρηστών
     private static final Map<Integer, Socket> userSockets = new HashMap<>();
     private static final Map<Integer, ObjectOutputStream> userOutputStreams = new HashMap<>();
     private static final Map<Integer, Map<String, Integer>> partialProductSales = new HashMap<>();
@@ -29,9 +34,9 @@ public class Master {
     private static final List<Store> allStores = new ArrayList<>();
 
     public static void main(String[] args) {
-        init();
-        listenForUsers();
-        listenForWorkerResponses();
+        init(); // Αρχικοποίηση του συστήματος
+        listenForUsers(); // Εκκίνηση listener για αιτήματα χρηστών
+        listenForWorkerResponses(); // Εκκίνηση listener για απαντήσεις Workers
     }
 
     private static void init() {
@@ -67,7 +72,7 @@ public class Master {
             }
         }).start();
     }
-
+    // Επεξεργασία αιτήματος από χρήστη
     private static void handleUser(Socket socket) {
         Socket userSocket = socket;
         ObjectOutputStream out = null;
@@ -86,21 +91,21 @@ public class Master {
             userOutputStreams.put(segmentId, out);
 
             switch (chunk.getTypeID()) {
-                case 1 -> {
+                case 1 -> {// Προσθήκη καταστήματος
                     Store store = (Store) chunk.getData();
                     allStores.add(store);
                     int workerIndex = getWorkerIndexForStore(store.getStoreName());
                     sendChunkToWorker(chunk, workerIndex);
                     out.writeObject(new Chunk("master", 1, "Το κατάστημα '" + store.getStoreName() + "' προστέθηκε."));
                 }
-                case 2, 3, 4 -> {
+                case 2, 3, 4 -> { // Ενημερώσεις καταστημάτων
                     Map<String, Object> data = (Map<String, Object>) chunk.getData();
                     String storeName = (String) data.get("storeName");
                     int workerIndex = getWorkerIndexForStore(storeName);
                     sendChunkToWorker(chunk, workerIndex);
                     out.writeObject(new Chunk("master", chunk.getTypeID(), "Η ενέργεια εκτελέστηκε."));
                 }
-                case 5 -> {
+                case 5 -> {// Αίτημα στατιστικών πωλήσεων
                     responsesReceived.put(segmentId, 0);
                     partialProductSales.put(segmentId, new HashMap<>());
                     for (int i = 0; i < numberOfWorkers; i++) {
@@ -109,14 +114,14 @@ public class Master {
                         sendChunkToWorker(requestChunk, i);
                     }
                 }
-                case 6, 7 -> {
+                case 6, 7 -> { // Άλλα είδη συνολικών στατιστικών
                     for (int i = 0; i < numberOfWorkers; i++) {
                         Chunk requestChunk = new Chunk("admin", chunk.getTypeID(), null);
                         requestChunk.setSegmentID(segmentId);
                         sendChunkToWorker(requestChunk, i);
                     }
                 }
-                case 10 -> {
+                case 10 -> {// Αναζήτηση προϊόντων
                     println("Νέα αναζήτηση...");
                     for (int i = 0; i < numberOfWorkers; i++) {
                         Chunk searchChunk = new Chunk("client", 10, chunk.getData());
@@ -147,7 +152,7 @@ public class Master {
             e.printStackTrace();
         }
     }
-
+    // Ακούει για απαντήσεις από τους Workers
     private static void listenForWorkerResponses() {
         new Thread(() -> {
             try (ServerSocket serverSocket = new ServerSocket(reducerPort)) {
@@ -161,14 +166,14 @@ public class Master {
             }
         }).start();
     }
-
+    // Επεξεργασία απάντησης από Worker
     private static void handleWorkerResponse(Socket socket) {
         try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
             Chunk chunk = (Chunk) in.readObject();
             int segmentId = chunk.getSegmentID();
 
             switch (chunk.getTypeID()) {
-                case 5, 6, 7, 11, 12 -> {
+                case 5, 6, 7, 11, 12 -> { // Ενοποίηση μερικών αποτελεσμάτων πωλήσεω
                     Map<String, Integer> part = (Map<String, Integer>) chunk.getData();
                     synchronized (Master.class) {
                         partialProductSales.putIfAbsent(segmentId, new HashMap<>());
@@ -182,7 +187,7 @@ public class Master {
                         }
                     }
                 }
-                case 10 -> {
+                case 10 -> {// Ενοποίηση αποτελεσμάτων αναζήτησης
                     List<Store> stores = (List<Store>) chunk.getData();
                     synchronized (Master.class) {
                         pendingResults.putIfAbsent(segmentId, new ArrayList<>());
@@ -201,7 +206,7 @@ public class Master {
             e.printStackTrace();
         }
     }
-
+    // Στέλνει ένα Chunk σε συγκεκριμένο Worker
     private static void sendChunkToWorker(Chunk chunk, int workerIndex) {
         try {
             WorkerInfo w = workers.get(workerIndex);
@@ -216,11 +221,11 @@ public class Master {
             e.printStackTrace();
         }
     }
-
+    // Υπολογίζει σε ποιον Worker θα ανατεθεί κατάστημα, με βάση το όνομά του
     private static int getWorkerIndexForStore(String storeName) {
         return Math.abs(storeName.hashCode()) % numberOfWorkers;
     }
-
+    // Στέλνει τα συγκεντρωτικά αποτελέσματα πίσω στον χρήστη
     private static void sendResultsToUser(int segmentId, Object resultData, int typeID) {
         try {
             Socket userSocket = userSockets.get(segmentId);
