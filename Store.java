@@ -1,6 +1,7 @@
 import java.io.Serializable;
 import java.util.List;
 
+//Store object class
 public class Store implements Serializable {
     private String storeName;
     private double latitude;

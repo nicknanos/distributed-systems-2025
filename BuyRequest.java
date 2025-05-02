@@ -1,5 +1,6 @@
 import java.io.Serializable;
 
+//Helper Class for the purchase function
 public class BuyRequest implements Serializable {
     private String storeName;
     private String productName;

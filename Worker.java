@@ -3,14 +3,19 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
 
+/**
+ * Κλάση Worker που εκπροσωπεί έναν κόμβο επεξεργασίας δεδομένων.
+ * Λαμβάνει αιτήματα από τον Master, διαχειρίζεται καταστήματα και προϊόντα, εκτελεί αγορές,
+ * και απαντά σε αιτήματα στατιστικών ή αναζητήσεων.
+ */
 public class Worker {
     private static int port;
     private static List<Store> storeList = Collections.synchronizedList(new ArrayList<>());
 
     // Πωλήσεις που θα ενημερώνει στον Master όταν ζητηθούν
-    private static final Map<String, Integer> salesByProduct = new HashMap<>();
-    private static final Map<String, Integer> salesByStoreType = new HashMap<>();
-    private static final Map<String, Integer> salesByProductCategory = new HashMap<>();
+    //private static final Map<String, Integer> salesByProduct = new HashMap<>();
+    //private static final Map<String, Integer> salesByStoreType = new HashMap<>();
+   // private static final Map<String, Integer> salesByProductCategory = new HashMap<>();
 
     public static void main(String[] args) {
         init();
@@ -23,12 +28,13 @@ public class Worker {
             Properties prop = new Properties();
             prop.load(new FileInputStream(configFile));
             port = Integer.parseInt(prop.getProperty("serverPort"));
-            System.out.println("👷 Worker listening on port " + port);
+            System.out.println("Worker listening on port " + port);
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
+    // Περιμένει συνδέσεις από τον Master και ξεκινά thread για κάθε μία
     private static void listenForMaster() {
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             while (true) {
@@ -43,7 +49,7 @@ public class Worker {
     private static void handleRequest(Socket socket) {
         try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
             Chunk chunk = (Chunk) in.readObject();
-            System.out.println("📥 Received Chunk (typeID=" + chunk.getTypeID() + ")");
+            System.out.println("Received Chunk (typeID=" + chunk.getTypeID() + ")");
 
             switch (chunk.getTypeID()) {
                 case 1 -> handleInsertStore(chunk);
@@ -57,22 +63,22 @@ public class Worker {
                 case 11 -> handleBuyRequest(chunk);
                 case 12 -> handleRating(chunk);
                 //case 100 -> handlePurchase(chunk, socket);
-                default -> System.out.println("❌ Άγνωστο typeID: " + chunk.getTypeID());
+                default -> System.out.println("Άγνωστο typeID: " + chunk.getTypeID());
             }
 
         } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
         }
     }
-
+    // Εισαγωγή νέου καταστήματος στη μνήμη του worker
     private static void handleInsertStore(Chunk chunk) {
         Store store = (Store) chunk.getData();
         synchronized (storeList) {
             storeList.add(store);
-            System.out.println("🏪 Κατάστημα '" + store.getStoreName() + "' αποθηκεύτηκε στον Worker.");
+            System.out.println("Κατάστημα '" + store.getStoreName() + "' αποθηκεύτηκε στον Worker.");
         }
     }
-
+    // Ενημέρωση ποσότητας διαθέσιμου προϊόντος
     private static void handleUpdateAvailability(Chunk chunk) {
         Map<String, Object> data = (Map<String, Object>) chunk.getData();
         String storeName = (String) data.get("storeName");
@@ -85,7 +91,7 @@ public class Worker {
                     for (Product p : store.getProducts()) {
                         if (p.getProductName().equalsIgnoreCase(productName)) {
                             p.setAvailableAmount(newAmount);
-                            System.out.println("🔄 Ενημερώθηκε ποσότητα '" + productName + "' στο κατάστημα '" + storeName + "' -> " + newAmount);
+                            System.out.println("Ενημερώθηκε ποσότητα '" + productName + "' στο κατάστημα '" + storeName + "' -> " + newAmount);
                             return;
                         }
                     }
@@ -93,7 +99,7 @@ public class Worker {
             }
         }
     }
-
+    // Προσθήκη νέου προϊόντος σε κατάστημα
     private static void handleAddProduct(Chunk chunk) {
         Map<String, Object> data = (Map<String, Object>) chunk.getData();
         String storeName = (String) data.get("storeName");
@@ -103,15 +109,15 @@ public class Worker {
             for (Store store : storeList) {
                 if (store.getStoreName().equalsIgnoreCase(storeName)) {
                     store.getProducts().add(newProduct);
-                    System.out.println("➕ Προστέθηκε νέο προϊόν '" + newProduct.getProductName() + "' στο κατάστημα '" + storeName + "'");
+                    System.out.println("Προστέθηκε νέο προϊόν '" + newProduct.getProductName() + "' στο κατάστημα '" + storeName + "'");
                     return;
                 }
             }
         }
 
-        System.out.println("❌ Δεν βρέθηκε κατάστημα για προσθήκη προϊόντος.");
+        System.out.println("Δεν βρέθηκε κατάστημα για προσθήκη προϊόντος.");
     }
-
+    // Αφαίρεση προϊόντος από κατάστημα
     private static void handleRemoveProduct(Chunk chunk) {
         Map<String, Object> data = (Map<String, Object>) chunk.getData();
         String storeName = (String) data.get("storeName");
@@ -122,18 +128,18 @@ public class Worker {
                 if (store.getStoreName().equalsIgnoreCase(storeName)) {
                     boolean removed = store.getProducts().removeIf(p -> p.getProductName().equalsIgnoreCase(productName));
                     if (removed) {
-                        System.out.println("❌ Το προϊόν '" + productName + "' αφαιρέθηκε από το κατάστημα '" + storeName + "'");
+                        System.out.println("Το προϊόν '" + productName + "' αφαιρέθηκε από το κατάστημα '" + storeName + "'");
                     } else {
-                        System.out.println("⚠ Το προϊόν δεν βρέθηκε στο κατάστημα.");
+                        System.out.println("Το προϊόν δεν βρέθηκε στο κατάστημα.");
                     }
                     return;
                 }
             }
         }
 
-        System.out.println("❌ Δεν βρέθηκε κατάστημα για αφαίρεση προϊόντος.");
+        System.out.println("Δεν βρέθηκε κατάστημα για αφαίρεση προϊόντος.");
     }
-
+    // Επιστροφή πωλήσεων ανα προϊόν
     private static void handleSalesByProduct(Chunk chunk, Socket socket) {
         Map<String, Integer> productSales = new HashMap<>();
 
@@ -159,6 +165,8 @@ public class Worker {
             e.printStackTrace();
         }
     }
+
+    // Επιστροφή πωλήσεων ανα τύπο καταστήματος (food category)
     private static void handleSalesByStoreType(Socket socket) {
         try (ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
             Map<String, Integer> storeTypeSales = new HashMap<>();
@@ -181,12 +189,14 @@ public class Worker {
             Chunk response = new Chunk("worker", 6, storeTypeSales);
             out.writeObject(response);
             out.flush();
-            System.out.println("📦 Sales per store type sent back to Master!");
+            System.out.println("Sales per store type sent back to Master!");
 
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
+
+    // Επιστροφή πωλήσεων ανα τύπο προϊόντος (product type)
     private static void handleSalesByProductCategory(Socket socket) {
         try (ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
             Map<String, Integer> productCategorySales = new HashMap<>();
@@ -208,13 +218,14 @@ public class Worker {
             Chunk response = new Chunk("worker", 7, productCategorySales);
             out.writeObject(response);
             out.flush();
-            System.out.println("📦 Sales per product category sent back to Master!");
+            System.out.println("Sales per product category sent back to Master!");
 
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
+    // Εκτελεί αναζήτηση με βάση φίλτρα (γεωγραφική απόσταση, κατηγορία φαγητού, αστέρια, τιμή)
     private static void handleSearchRequest(Chunk chunk) {
         try {
             Map<String, Object> filters = (Map<String, Object>) chunk.getData();
@@ -251,6 +262,7 @@ public class Worker {
         }
     }
 
+    // Εκτελεί αγορά προϊόντος, ενημερώνει απόθεμα και στατιστικά
     private static void handleBuyRequest(Chunk chunk) {
         BuyRequest req = (BuyRequest) chunk.getData();
         String storeName = req.getStoreName();
@@ -266,10 +278,10 @@ public class Worker {
                                 int available = p.getAvailableAmount();
                                 if (available >= quantity) {
                                     p.setAvailableAmount(available - quantity);
-                                    System.out.println("✅ Αγορά: " + quantity + " x " + productName + " από " + storeName);
+                                    System.out.println("Αγορά: " + quantity + " x " + productName + " από " + storeName);
                                     return;
                                 } else {
-                                    System.out.println("❌ Μη διαθέσιμο απόθεμα για " + productName + " στο " + storeName);
+                                    System.out.println("Μη διαθέσιμο απόθεμα για " + productName + " στο " + storeName);
                                     return;
                                 }
                             }
@@ -279,9 +291,10 @@ public class Worker {
             }
         }
 
-        System.out.println("❌ Κατάστημα ή προϊόν δεν βρέθηκαν για αγορά.");
+        System.out.println("Κατάστημα ή προϊόν δεν βρέθηκαν για αγορά.");
     }
 
+    // Ενημερώνει τη βαθμολογία του καταστήματος με νέο review
 
     private static void handleRating(Chunk chunk) {
         Map<String, Object> data = (Map<String, Object>) chunk.getData();
@@ -297,7 +310,7 @@ public class Worker {
                     int newStars = Math.round(((oldStars * oldVotes) + rating) / (float) newVotes);
                     store.setStars(newStars);
                     store.setNoOfVotes(newVotes);
-                    System.out.println("⭐ Νέα βαθμολογία για '" + storeName + "': " + newStars + " (" + newVotes + " ψήφοι)");
+                    System.out.println("Νέα βαθμολογία για '" + storeName + "': " + newStars + " (" + newVotes + " ψήφοι)");
                     return;
                 }
             }
@@ -305,7 +318,7 @@ public class Worker {
     }
 
 
-
+    // Στέλνει αποτελέσματα αναζήτησης στον Master μέσω reducerPort
     private static void sendResultsToMaster(int segmentId, List<Store> results) {
         try {
             Properties prop = new Properties();
@@ -321,7 +334,7 @@ public class Worker {
 
                 out.writeObject(response);
                 out.flush();
-                System.out.println("✅ Στάλθηκαν αποτελέσματα αναζήτησης στον Master (" + results.size() + " καταστήματα).");
+                System.out.println("Στάλθηκαν αποτελέσματα αναζήτησης στον Master (" + results.size() + " καταστήματα).");
             }
 
         } catch (IOException e) {
@@ -329,7 +342,7 @@ public class Worker {
         }
     }
 
-
+    // Υπολογισμός απόστασης μεταξύ δύο σημείων με βάση γεωγραφικό πλάτος και μήκος
     private static double distance(double lat1, double lon1, double lat2, double lon2) {
         double theta = lon1 - lon2;
         double dist = Math.sin(Math.toRadians(lat1)) * Math.sin(Math.toRadians(lat2))

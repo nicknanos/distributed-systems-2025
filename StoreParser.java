@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
+//Parses the json file containing the store information
 public class StoreParser {
 
     public static Store parseStoreFromJson(String folderPath) throws Exception {

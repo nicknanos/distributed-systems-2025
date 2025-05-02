@@ -1,7 +1,7 @@
 
 import java.io.Serializable;
 import java.util.List;
-
+//-------------------NOT IN USE--------------------------\\
 public class SearchRequest implements Serializable {
     private double latitude;
     private double longitude;

@@ -2,6 +2,11 @@ import java.io.*;
 import java.net.Socket;
 import java.util.*;
 
+/**
+ * Κλάση ManagerConsole - Διαχειρίζεται τις λειτουργίες του manager.
+ * Επιτρέπει την προσθήκη καταστημάτων, προϊόντων, την ενημέρωση αποθέματος
+ * και την εμφάνιση συνολικών πωλήσεων ανά προϊόν, τύπο καταστήματος ή κατηγορία προϊόντος.
+ */
 public class ManagerConsole {
     private static String masterHost;
     private static int masterPort;
@@ -46,7 +51,7 @@ public class ManagerConsole {
             e.printStackTrace();
         }
     }
-
+    // Εισαγωγή καταστήματος
     private static void insertStore(Scanner scanner) {
         System.out.print("📁 Δώσε path φακέλου που περιέχει το store.json και logo: ");
         String folderPath = scanner.nextLine();
@@ -55,16 +60,16 @@ public class ManagerConsole {
             Chunk chunk = new Chunk("admin", 1, store);
             sendToMaster(chunk, true);
         } catch (Exception e) {
-            System.out.println("❌ Σφάλμα κατά την ανάγνωση JSON: " + e.getMessage());
+            System.out.println("Σφάλμα κατά την ανάγνωση JSON: " + e.getMessage());
         }
     }
-
+    // Αποστολή ενημέρωσης αποθέματος για συγκεκριμένο προϊόν
     private static void updateProductAmount(Scanner scanner) {
-        System.out.print("🏪 Όνομα καταστήματος: ");
+        System.out.print("Όνομα καταστήματος: ");
         String storeName = scanner.nextLine();
-        System.out.print("🍔 Όνομα προϊόντος: ");
+        System.out.print("Όνομα προϊόντος: ");
         String productName = scanner.nextLine();
-        System.out.print("📦 Νέα ποσότητα διαθέσιμου προϊόντος: ");
+        System.out.print("Νέα ποσότητα διαθέσιμου προϊόντος: ");
         int newAmount = Integer.parseInt(scanner.nextLine());
 
         Map<String, Object> data = new HashMap<>();
@@ -75,7 +80,7 @@ public class ManagerConsole {
         Chunk chunk = new Chunk("admin", 2, data);
         sendToMaster(chunk, true);
     }
-
+    //Προσθήκη νέου προιοντος
     private static void addNewProduct(Scanner scanner) {
         Map<String, Object> data = new HashMap<>();
         System.out.print("Κατάστημα: ");
@@ -96,7 +101,7 @@ public class ManagerConsole {
         Chunk chunk = new Chunk("admin", 3, data);
         sendToMaster(chunk, true);
     }
-
+    //Αφαίορεση Προιόντος
     private static void removeProduct(Scanner scanner) {
         Map<String, Object> data = new HashMap<>();
         System.out.print("Κατάστημα: ");
@@ -123,6 +128,7 @@ public class ManagerConsole {
         sendToMaster(chunk, true);
     }
 
+    //Αποστολή chunk στον Master
     private static void sendToMaster(Chunk chunk, boolean expectsResponse) {
         try (Socket socket = new Socket(masterHost, masterPort);
              ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
@@ -130,11 +136,11 @@ public class ManagerConsole {
 
             out.writeObject(chunk);
             out.flush();
-            System.out.println("✅ Request sent to Master.");
+            System.out.println("Request sent to Master.");
 
             if (expectsResponse) {
                 Chunk response = (Chunk) in.readObject();
-                System.out.println("✅ Response from Master:");
+                System.out.println("Response from Master:");
                 System.out.println(response.getData());
             }
 

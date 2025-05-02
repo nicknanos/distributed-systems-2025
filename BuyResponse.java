@@ -1,6 +1,6 @@
 
 import java.io.Serializable;
-
+//------------------------REDUNDANT-----------------------------\\
 public class BuyResponse implements Serializable {
     private boolean success;
     private String message;

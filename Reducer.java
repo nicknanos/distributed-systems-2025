@@ -3,7 +3,11 @@ import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
-
+/**
+ * Κλάση Reducer – Συντονίζει και συγχωνεύει δεδομένα που λαμβάνονται από πολλούς Workers
+ * στο πλαίσιο της διαδικασίας MapReduce.
+ * Όταν συγκεντρωθούν όλα τα αναμενόμενα τμήματα (chunks), τα συγχωνεύει και στέλνει τα αποτελέσματα στον Master.
+ */
 public class Reducer {
     private static int serverPort;
     private static String masterHost;
@@ -33,7 +37,7 @@ public class Reducer {
         init();
         startReducerServer();
     }
-
+    // Ξεκινάει τον server του Reducer ώστε να δέχεται αιτήματα από τους Workers
     private static void startReducerServer() {
         try (ServerSocket serverSocket = new ServerSocket(serverPort)) {
             while (true) {
@@ -44,7 +48,7 @@ public class Reducer {
             throw new RuntimeException(e);
         }
     }
-
+    // Διαχειρίζεται τα εισερχόμενα αιτήματα από τους Workers
     private static void handleWorkerRequest(Socket workerSocket) {
         try (ObjectInputStream in = new ObjectInputStream(workerSocket.getInputStream())) {
             while (true) {
@@ -69,7 +73,7 @@ public class Reducer {
             e.printStackTrace();
         }
     }
-
+    // Αποστέλλει ένα chunk πίσω στον Master
     private static void sendToMaster(Chunk chunk) {
         try (Socket masterSocket = new Socket(masterHost, masterPort);
              ObjectOutputStream out = new ObjectOutputStream(masterSocket.getOutputStream())) {
@@ -81,7 +85,7 @@ public class Reducer {
             e.printStackTrace();
         }
     }
-
+    // Συγχωνεύει λίστες καταστημάτων από πολλά chunks σε ένα ενιαίο chunk
     private static Chunk mergeStores(ArrayList<Chunk> chunks) {
         String userID = chunks.get(0).getUserID();
         int segmentID = chunks.get(0).getSegmentID();

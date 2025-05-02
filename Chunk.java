@@ -2,7 +2,11 @@ import java.io.ByteArrayOutputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 
-
+/**
+ * Η κλάση Chunk χρησιμοποιείται για την αναπαράσταση ενός "πακέτου" δεδομένων
+ * που ανταλλάσσεται ανάμεσα σε Client/Master/Worker/Reducer.
+ * Περιέχει όλες τις απαραίτητες πληροφορίες για να προσδιορίσουμε την αίτηση ενός χρήστη.
+ */
 public class Chunk implements Serializable {
     private final String userID;
     private static int segmentID;
@@ -32,6 +36,7 @@ public class Chunk implements Serializable {
         return data;
     }
 
+    /*
     public int getLenght(){
         try {
             ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
@@ -44,6 +49,7 @@ public class Chunk implements Serializable {
             return 0;
         }
     }
+    */
     @Override
     public boolean equals(Object other) {
         if (other == null){
