@@ -106,22 +106,22 @@ public class Master {
                     sendChunkToWorker(chunk, workerIndex);
                     out.writeObject(new Chunk("master", chunk.getTypeID(), "Η ενέργεια εκτελέστηκε."));
                 }
-                case 5 -> {// Αίτημα στατιστικών πωλήσεων
+                case 5,6,7 -> {// Αίτημα στατιστικών πωλήσεων
                     responsesReceived.put(segmentId, 0);
                     partialProductSales.put(segmentId, new HashMap<>());
-                    for (int i = 0; i < numberOfWorkers; i++) {
-                        Chunk requestChunk = new Chunk("admin", 5, null);
-                        requestChunk.setSegmentID(segmentId);
-                        sendChunkToWorker(requestChunk, i);
-                    }
-                }
-                case 6, 7 -> { // Άλλα είδη συνολικών στατιστικών
                     for (int i = 0; i < numberOfWorkers; i++) {
                         Chunk requestChunk = new Chunk("admin", chunk.getTypeID(), null);
                         requestChunk.setSegmentID(segmentId);
                         sendChunkToWorker(requestChunk, i);
                     }
                 }
+//                case 6, 7 -> { // Άλλα είδη συνολικών στατιστικών
+//                    for (int i = 0; i < numberOfWorkers; i++) {
+//                        Chunk requestChunk = new Chunk("admin", chunk.getTypeID(), null);
+//                        requestChunk.setSegmentID(segmentId);
+//                        sendChunkToWorker(requestChunk, i);
+//                    }
+//                }
                 case 10 -> {// Αναζήτηση προϊόντων
                     println("Νέα αναζήτηση...");
                     for (int i = 0; i < numberOfWorkers; i++) {

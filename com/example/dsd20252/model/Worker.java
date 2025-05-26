@@ -59,12 +59,11 @@ public class Worker {
                 case 3 -> handleAddProduct(chunk);
                 case 4 -> handleRemoveProduct(chunk);
                 case 5 -> handleSalesByProduct(chunk, socket);
-                case 6 -> handleSalesByStoreType(socket);
-                case 7 -> handleSalesByProductCategory(socket);
+                case 6 -> handleSalesByStoreType(chunk,socket);
+                case 7 -> handleSalesByProductCategory(chunk, socket);
                 case 10 -> handleSearchRequest(chunk);
                 case 11 -> handleBuyRequest(chunk);
                 case 12 -> handleRating(chunk);
-                //case 100 -> handlePurchase(chunk, socket);
                 default -> System.out.println("Άγνωστο typeID: " + chunk.getTypeID());
             }
 
@@ -157,19 +156,12 @@ public class Worker {
             }
         }
 
-        try {
-            ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
-            Chunk response = new Chunk("worker", 5, productSales);
-            response.setSegmentID(chunk.getSegmentID());
-            out.writeObject(response);
-            out.flush();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        sendStatsToMaster(chunk.getSegmentID(), productSales);
+
     }
 
     // Επιστροφή πωλήσεων ανα τύπο καταστήματος (food category)
-    private static void handleSalesByStoreType(Socket socket) {
+    private static void handleSalesByStoreType(Chunk chunk, Socket socket) {
         try (ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
             Map<String, Integer> storeTypeSales = new HashMap<>();
 
@@ -177,21 +169,16 @@ public class Worker {
                 for (Store store : storeList) {
                     int storeSales = 0;
                     for (Product p : store.getProducts()) {
-                        int initialAmount = p.getInitialAmount();
-                        int currentAmount = p.getAvailableAmount();
-                        storeSales += (initialAmount - currentAmount);
+                        storeSales =p.getSoldAmount();
                     }
-
                     if (storeSales > 0) {
                         storeTypeSales.merge(store.getFoodCategory(), storeSales, Integer::sum);
                     }
                 }
             }
 
-            Chunk response = new Chunk("worker", 6, storeTypeSales);
-            out.writeObject(response);
-            out.flush();
-            System.out.println("Sales per store type sent back to Master!");
+            sendStatsToMaster(chunk.getSegmentID(), storeTypeSales);
+
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -199,28 +186,23 @@ public class Worker {
     }
 
     // Επιστροφή πωλήσεων ανα τύπο προϊόντος (product type)
-    private static void handleSalesByProductCategory(Socket socket) {
+    private static void handleSalesByProductCategory(Chunk chunk, Socket socket) {
         try (ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
             Map<String, Integer> productCategorySales = new HashMap<>();
 
             synchronized (storeList) {
                 for (Store store : storeList) {
                     for (Product p : store.getProducts()) {
-                        int initialAmount = p.getInitialAmount();
-                        int currentAmount = p.getAvailableAmount();
-                        int sold = initialAmount - currentAmount;
-
-                        if (sold > 0) {
+                        int sold = p.getSoldAmount();
+                        if (p.getSoldAmount() > 0) {
                             productCategorySales.merge(p.getProductType(), sold, Integer::sum);
                         }
                     }
                 }
             }
 
-            Chunk response = new Chunk("worker", 7, productCategorySales);
-            out.writeObject(response);
-            out.flush();
-            System.out.println("Sales per product category sent back to Master!");
+            sendStatsToMaster(chunk.getSegmentID(), productCategorySales);
+
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -280,6 +262,7 @@ public class Worker {
                                 int available = p.getAvailableAmount();
                                 if (available >= quantity) {
                                     p.setAvailableAmount(available - quantity);
+                                    p.setSoldAmount(p.getSoldAmount() + quantity);
                                     System.out.println("Αγορά: " + quantity + " x " + productName + " από " + storeName);
                                     return;
                                 } else {
@@ -344,6 +327,29 @@ public class Worker {
         }
     }
 
+    private static void sendStatsToMaster(int segmentId, Map<String, Integer> results) {
+        try {
+            Properties prop = new Properties();
+            prop.load(new FileInputStream("worker.config"));
+            String masterHost = prop.getProperty("masterHost");
+            int masterPort = Integer.parseInt(prop.getProperty("reducerPort"));
+
+            try (Socket socket = new Socket(masterHost, masterPort);
+                 ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
+
+                Chunk response = new Chunk("worker", 5, results);
+                response.setSegmentID(segmentId);
+
+                out.writeObject(response);
+                out.flush();
+                System.out.println("Στάλθηκαν αποτελέσματα στατιστικών στον Master");
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
     // Υπολογισμός απόστασης μεταξύ δύο σημείων με βάση γεωγραφικό πλάτος και μήκος
     private static double distance(double lat1, double lon1, double lat2, double lon2) {
         double theta = lon1 - lon2;
@@ -352,7 +358,7 @@ public class Worker {
         dist = Math.acos(dist);
         dist = Math.toDegrees(dist);
         dist = dist * 60 * 1.1515 * 1.609344; // miles to km
-        System.out.println(dist);
+        //System.out.println(dist);
         return dist;
 
     }
