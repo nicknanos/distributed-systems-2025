@@ -1,3 +1,5 @@
+package com.example.dsd20252.model;
+
 import java.io.Serializable;
 
 //Product object class

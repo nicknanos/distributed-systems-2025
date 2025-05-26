@@ -1,3 +1,5 @@
+package com.example.dsd20252.model;
+
 import java.io.*;
 import java.net.Socket;
 import java.util.*;
@@ -62,7 +64,7 @@ public class DummyUser {
             System.out.print("Longitude: ");
             filters.put("longitude", Double.parseDouble(scanner.nextLine()));
 
-            System.out.print("🍽 Food Category (π.χ. pizzeria): ");
+            System.out.print("Food Category (π.χ. pizzeria): ");
             String food = scanner.nextLine();
             if (!food.isEmpty()) filters.put("foodCategory", food);
 

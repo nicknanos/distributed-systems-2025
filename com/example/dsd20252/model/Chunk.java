@@ -1,5 +1,6 @@
-import java.io.ByteArrayOutputStream;
-import java.io.ObjectOutputStream;
+package com.example.dsd20252.model;
+
+
 import java.io.Serializable;
 
 /**

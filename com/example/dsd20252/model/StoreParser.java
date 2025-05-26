@@ -1,3 +1,5 @@
+package com.example.dsd20252.model;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
