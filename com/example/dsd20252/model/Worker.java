@@ -169,7 +169,7 @@ public class Worker {
                 for (Store store : storeList) {
                     int storeSales = 0;
                     for (Product p : store.getProducts()) {
-                        storeSales =p.getSoldAmount();
+                        storeSales += p.getSoldAmount();
                     }
                     if (storeSales > 0) {
                         storeTypeSales.merge(store.getFoodCategory(), storeSales, Integer::sum);
